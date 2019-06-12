@@ -4,10 +4,18 @@
 <meta charset="utf-8"/>
 <title>poc</title>
 <script type="text/javascript">
-    alert(window.myObj.getToken());
+    function alert1() {
+        alert(window.myObj.getToken());
+    }
+    function alert2() {
+        alert2(window.myObj.getToken2());
+    }
+    
 </script>
 </head>
 <body>
-    <div style="width:500px;height:320px">HelloWorld</div>
+    <div style="width:500px;height:30px">HelloWorld</div>
+    <button onclick="alert1()">getToken1</button><br/><br/>
+    <button onclick="alert2()">getToken2</button>
 </body>
 </html>
