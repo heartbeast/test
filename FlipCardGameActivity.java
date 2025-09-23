@@ -20,7 +20,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-//public class FlipCardGameActivity extends AppCompatActivity implements CardView.CardAnimationListener {
 public class FlipCardGameActivity extends AppCompatActivity {
     public static final String TAG = "MemoryTrain";
 
@@ -30,18 +29,20 @@ public class FlipCardGameActivity extends AppCompatActivity {
     private Button btnRestart;
     private Button btnSettings;
 
-    private int columnCount = 4; // 默认列数
-    private int rowCount = 3; // 默认行数
+    private int columnCount = 3; // 默认列数
+    private int rowCount = 2; // 默认行数
     private int totalCards = columnCount * rowCount;
 
 //    private List<CardView> cardViews; // 所有卡片视图
     private List<Integer> cardImageIds; // 卡片正面图片资源ID列表
+    private List<Integer> selectedImageIds; // 每一轮游戏被选择的卡片
 
     private CardView firstFlippedCard = null;
     private CardView secondFlippedCard = null;
 
     private int matchedPairsCount = 0;
     private int clickCounter = 0;
+    private boolean isAnimating = false;    // 是否正在动画中
 
     private Handler timerHandler = new Handler();
     private long startTime = 0L;
@@ -100,24 +101,18 @@ public class FlipCardGameActivity extends AppCompatActivity {
 
         gameStartTime = SystemClock.elapsedRealtime();
 
-        setupGridLayout();
-        initializeCards();
+        initGridLayout();
+        initCardList();
+        initCardsView();
     }
 
-    private void setupGridLayout() {
+    private void initGridLayout() {
         gameGridLayout.removeAllViews(); // 清除之前的卡片
         gameGridLayout.setColumnCount(columnCount);
         gameGridLayout.setRowCount(rowCount);
     }
-
-    private void initializeCards() {
-        int cardWidth = (int) (getResources().getDisplayMetrics().widthPixels / columnCount * 0.9);
-        int cardHeight = (int) (getResources().getDisplayMetrics().heightPixels / (rowCount + 1) * 0.8);
-        Logd("Width="+getResources().getDisplayMetrics().widthPixels+", Height="+getResources().getDisplayMetrics().heightPixels );
-        Logd("cardWidth="+cardWidth+", cardHeight="+cardHeight);
-
-        List<Integer> selectedImageIds = new ArrayList<>();
-
+    private void initCardList() {
+        selectedImageIds = new ArrayList<>();
         // 随机选择所需的图片ID
         Collections.shuffle(cardImageIds);
         for (int i = 0; i < totalCards / 2; i++) {
@@ -129,10 +124,16 @@ public class FlipCardGameActivity extends AppCompatActivity {
 //        for (int i = 0; i < totalCards; i++) {
 //            Logd("selectedImageIds=" + selectedImageIds.get(i));
 //        }
+    }
+
+    private void initCardsView() {
+        int cardWidth = (int) (getResources().getDisplayMetrics().widthPixels / columnCount * 0.9);
+        int cardHeight = (int) (getResources().getDisplayMetrics().heightPixels / (rowCount + 1) * 0.8);
+        Logd("Width="+getResources().getDisplayMetrics().widthPixels+", Height="+getResources().getDisplayMetrics().heightPixels );
+        Logd("cardWidth="+cardWidth+", cardHeight="+cardHeight);
 
         // 创建CardView实例并设置图片ID
         for (int i = 0; i < totalCards; i++) {
-            Logd("create card: " + i);
             CardView card = new CardView(this);
             card.setCard(selectedImageIds.get(i), selectedImageIds.get(i), R.drawable.card_back);
 
@@ -143,52 +144,57 @@ public class FlipCardGameActivity extends AppCompatActivity {
             card.setLayoutParams(layoutParams);
             gameGridLayout.addView(card);
 
-//            card.setCardAnimationListener(this); // 设置动画监听器
             card.setOnClickListener(v -> {
                 Logd("card clicked, id=" + card.getCardId());
-                if (card.isAnimating() || card.isFrontShowing()) {
-                    return; // 正在动画已翻开的卡片不响应点击，已配对会变成disable状态，不会有点击事件
+                if (isAnimating || card.isFront()) {
+                    return; // 正在动画或已翻开的卡片不响应点击。已配对会变成disable状态，不会有点击事件
                 }
+                isAnimating = true;
+
                 clickCounter++;
                 tvClickCount.setText("点击次数: " + clickCounter);
-                card.setEnabled(false);
+
                 card.flipCard(); // 翻开卡片
 
                 if (firstFlippedCard == null) {
                     firstFlippedCard = card;
-                } else {  // if (secondFlippedCard == null)
-                    secondFlippedCard = card;
                     card.postDelayed(() -> {
+                        isAnimating = false;
+                    }, 1000);  // 此处是为了等待翻牌动画结束
+                } else {
+                    secondFlippedCard = card;
+                    Logd("wait animation...");
+                    card.postDelayed(() -> {
+                        Logd("animation end...");
                         verifyMatch();
-                    }, 1000);
+                    }, 800);  // 此处是为了等待翻牌动画结束
                 }
             });
         }
     }
 
     private void verifyMatch() {
-        if (firstFlippedCard.getCardId() == secondFlippedCard.getCardId()) {
-            // 匹配成功
-            new Handler().postDelayed(() -> {
-                firstFlippedCard.vanishCard();
-                secondFlippedCard.vanishCard();
-                checkGameOver();
-            }, 500); // 延迟0.5秒消失
-        } else {
-            // 匹配失败，等待一段时间后翻回
-            new Handler().postDelayed(() -> {
-                firstFlippedCard.flipBack();
-                secondFlippedCard.flipBack();
-                firstFlippedCard = null;
-                secondFlippedCard = null;
-            }, 500); // 延迟1秒翻回
+        Logd("id1="+firstFlippedCard.getCardId()+", id2="+secondFlippedCard.getCardId());
+        if (firstFlippedCard.getCardId() == secondFlippedCard.getCardId()) { // 匹配成功
+            Logd(" ==matched==");
+            firstFlippedCard.vanishCard();
+            secondFlippedCard.vanishCard();
+            checkGameOver();
+        } else { // 匹配失败，等待一段时间后翻回
+            Logd(" ==no match,flip back==");
+            firstFlippedCard.flipBack();
+            secondFlippedCard.flipBack();
         }
+        new Handler().postDelayed(() -> {
+            firstFlippedCard = null;
+            secondFlippedCard = null;
+            isAnimating = false;
+        }, 1000); // 延迟一会翻回
     }
     public void checkGameOver() {
         matchedPairsCount++;
         // 检查是否所有卡片都已配对
-        if (matchedPairsCount * 2 == totalCards) {
-            // 游戏结束
+        if (matchedPairsCount * 2 == totalCards) { // 游戏结束
             timerHandler.removeCallbacks(updateTimerRunnable); // 停止计时器
             Toast.makeText(this, "恭喜，所有卡片已配对！点击次数: " + clickCounter + ", 用时: " + tvGameTime.getText().toString().replace("时间: ", ""), Toast.LENGTH_LONG).show();
             // 可以在这里显示游戏结束对话框
@@ -197,54 +203,6 @@ public class FlipCardGameActivity extends AppCompatActivity {
         long finalTime = SystemClock.elapsedRealtime() - gameStartTime;
         Logd("Finishing game. Time: " + (finalTime / 1000));
     }
-//
-//    @Override
-//    public void onFlipAnimationEnd(CardView cardView) {
-//        // 卡片翻转动画结束时调用
-//        if (firstFlippedCard == null) {
-//            firstFlippedCard = cardView;
-//        } else if (secondFlippedCard == null) {
-//            secondFlippedCard = cardView;
-//
-//            // 比较两张卡片
-//            if (firstFlippedCard.getCardId() == secondFlippedCard.getCardId()) {
-//                // 匹配成功
-//                new Handler().postDelayed(() -> {
-//                    firstFlippedCard.vanishCard();
-//                    secondFlippedCard.vanishCard();
-//                    // 等待消失动画结束再重置
-//                }, 500); // 延迟0.5秒消失
-//            } else {
-//                // 匹配失败，等待一段时间后翻回
-//                new Handler().postDelayed(() -> {
-//                    firstFlippedCard.flipBack();
-//                    secondFlippedCard.flipBack();
-//                    firstFlippedCard = null;
-//                    secondFlippedCard = null;
-//                }, 1000); // 延迟1秒翻回
-//            }
-//        }
-//    }
-//
-//    @Override
-//    public void onVanishAnimationEnd(CardView cardView) {
-//        // 卡片消失动画结束时调用
-//        matchedPairsCount++;
-//        // 检查是否所有卡片都已配对
-//        if (matchedPairsCount * 2 == totalCards) {
-//            // 游戏结束
-//            timerHandler.removeCallbacks(updateTimerRunnable); // 停止计时器
-//            Toast.makeText(this, "恭喜，所有卡片已配对！点击次数: " + clickCounter + ", 用时: " + tvGameTime.getText().toString().replace("时间: ", ""), Toast.LENGTH_LONG).show();
-//            // 可以在这里显示游戏结束对话框
-//        }
-//
-//        // 重置翻开的卡片引用
-//        if (cardView == firstFlippedCard) {
-//            firstFlippedCard = null;
-//        } else if (cardView == secondFlippedCard) {
-//            secondFlippedCard = null;
-//        }
-//    }
 
     private void showSettingsDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
