@@ -21,25 +21,12 @@ public class CardView extends AppCompatImageView {
     private int cardId; // 用于判断是否匹配的唯一ID
     private int frontImageResId;
     private int backImageResId;
-    public boolean isFrontShowing = false; // 当前是否显示正面
-//    public boolean isMatched = false;      // 是否已配对
-    public boolean isAnimating = false;    // 是否正在动画中
+    private boolean isFrontShowing = false; // 当前是否显示正面
+    private volatile boolean isAnimate = false;    // 是否正在动画中
 
     private ObjectAnimator flipOutAnimator;
     private ObjectAnimator flipInAnimator;
     private ObjectAnimator vanishAnimator; // 消失动画
-
-    // 监听器接口，用于通知外部动画完成
-    public interface CardAnimationListener {
-        void onFlipAnimationEnd(CardView cardView);
-        void onVanishAnimationEnd(CardView cardView);
-    }
-
-    private CardAnimationListener animationListener;
-
-    public void setCardAnimationListener(CardAnimationListener listener) {
-        this.animationListener = listener;
-    }
 
     public CardView(Context context) {
         super(context);
@@ -66,13 +53,12 @@ public class CardView extends AppCompatImageView {
     }
 
     public void setCard(int cardId, int frontImageResId, int backImageResId) {
-        Logd("CardView.setCard: cardId=" + cardId + ", frontResId="+frontImageResId+", backResId="+backImageResId);
+//        Logd("CardView.setCard: cardId=" + cardId + ", frontResId="+frontImageResId+", backResId="+backImageResId);
         this.cardId = cardId;
         this.frontImageResId = frontImageResId;
         this.backImageResId = backImageResId;
         this.isFrontShowing = false; // 初始化为背面
-//        this.isMatched = false;      // 初始化为未配对
-        this.isAnimating = false;
+        this.isAnimate = false;
         // 确保视图在设置新卡片时重置状态
         this.setScaleX(1f);
         this.setScaleY(1f);
@@ -89,7 +75,8 @@ public class CardView extends AppCompatImageView {
         flipOutAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                isAnimating = true;
+                Logd("onFlipAnimationStart...");
+                isAnimate = true;
             }
 
             @Override
@@ -106,9 +93,12 @@ public class CardView extends AppCompatImageView {
         flipInAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                isAnimating = false;
-                if (animationListener != null) {
-                    animationListener.onFlipAnimationEnd(CardView.this);
+                Logd("onFlipAnimationEnd...");
+                isAnimate = false;
+                if (isFrontShowing) {
+                    setEnabled(false); // 翻开后禁止点击
+                } else {
+                    setEnabled(true); // 翻开后禁止点击
                 }
             }
         });
@@ -126,27 +116,21 @@ public class CardView extends AppCompatImageView {
         vanishAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
-                isAnimating = true;
+                Logd("onAnimationStart...");
+                isAnimate = true;
             }
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                isAnimating = false;
+                Logd("onAnimationEnd...");
+                isAnimate = false;
                 setVisibility(INVISIBLE); // 动画结束后隐藏
-                if (animationListener != null) {
-                    animationListener.onVanishAnimationEnd(CardView.this);
-                }
             }
         });
     }
 
-
     public void flipCard() {
-        if (isAnimating) {
-            return;
-        }
-
-        isAnimating = true; // 开始动画时设为true
+        isAnimate = true; // 开始动画时设为true
         if (isFrontShowing) {
             flipOutAnimator.setFloatValues(0f, 90f);
             flipInAnimator.setFloatValues(-90f, 0f);
@@ -157,39 +141,13 @@ public class CardView extends AppCompatImageView {
         flipOutAnimator.start();
     }
 
-    // 翻回背面（不触发监听器，用于不匹配时自动翻回）
+    // 翻回背面, 用isFrontShowing来区分动画效果
     public void flipBack() {
-        if (isAnimating || !isFrontShowing) {
-            return;
-        }
-        isAnimating = true; // 开始动画时设为true
-        flipOutAnimator.setFloatValues(0f, 90f);
-        flipInAnimator.setFloatValues(-90f, 0f);
-        flipOutAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                isFrontShowing = !isFrontShowing;
-                setImageResource(isFrontShowing ? frontImageResId : backImageResId);
-                flipInAnimator.start();
-            }
-        });
-        flipInAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                isAnimating = false; // 动画结束时设为false
-                setEnabled(true); // 不再响应点击
-                // 这里不调用animationListener.onFlipAnimationEnd，因为是自动翻回
-                // 移除监听器以防止对下一次正常的翻牌动画造成影响
-//                flipOutAnimator.removeAllListeners();
-//                flipInAnimator.removeAllListeners();
-//                setupFlipAnimations(); // 重新设置默认监听器
-            }
-        });
-        flipOutAnimator.start();
+        flipCard();
     }
 
     public void vanishCard() {
-        if (isAnimating) {
+        if (isAnimate) {
             return;
         }
         setEnabled(false); // 不再响应点击
@@ -201,16 +159,12 @@ public class CardView extends AppCompatImageView {
         return cardId;
     }
 
-    public boolean isFrontShowing() {
+    public boolean isFront() {
         return isFrontShowing;
     }
 
-//    public boolean isMatched() {
-//        return isMatched;
-//    }
-
     public boolean isAnimating() {
-        return isAnimating;
+        return isAnimate;
     }
 
     void Logd(String msg) {
